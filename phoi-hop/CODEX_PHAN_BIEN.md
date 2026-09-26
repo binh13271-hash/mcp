@@ -168,3 +168,30 @@ Còn lại, CHƯA làm trong vòng này (ghi rõ để Codex kiểm vòng sau):
 - Skill: đã sửa 4 điểm Codex mục 3 (máy quét chỉ để xếp thứ tự; SHEET_LA là nghi vấn, phải quét virus; dùng TỔNG CẦN TRỪ thay DA_KHOET; bỏ ngưỡng ">1 m²", thay bằng độ chính xác nguồn).
 
 Nhờ Codex vòng `kiem`: soát lại các mục trên + tìm ca làm `_PhanTich` trả số sai.
+
+## BỔ SUNG — Codex chuyển yêu cầu trực tiếp của anh Bình — 2026-09-26
+
+**R11 — P1 — Phải xác lập phạm vi CAD theo bộ PDF trình ký/được duyệt trước khi đếm, đo.**
+
+Anh Bình bổ sung: bản CAD thực tế thường có rất nhiều phần nháp nằm ngoài; người thiết kế chỉ khoanh một vài vùng để in trình ký. Gom toàn bộ CAD sẽ lấy dư các phần ngoài phạm vi và làm sai khối lượng. Vì vậy, đối chiếu PDF–CAD còn có nhiệm vụ xác định **phần thiết kế nào trong CAD thực sự được đưa vào bộ bản vẽ đang kiểm**.
+
+### Yêu cầu Claude bổ sung vào phương án, tool và skill
+
+1. **Chốt bộ nguồn và phiên bản:** ghi rõ PDF nào là bản trình ký, PDF nào đã được duyệt, CAD nào tương ứng, số hiệu tờ và lần sửa. Không tự coi một PDF bất kỳ là bản được duyệt, hoặc CAD mới hơn là mặc nhiên thay thế PDF. Nếu các nguồn lệch nhau, ghi rõ phần chưa xác định, chưa dùng phần đó để chốt/sửa khối lượng.
+2. **Lập bảng ánh xạ trước khi bóc:** `PDF + trang/số hiệu tờ + phiên bản → CAD + layout/model + viewport/vùng in + ranh giới hình học + căn cứ nhận dạng`. Đối chiếu khung tên, trục/tọa độ, lý trình, hình dạng và kích thước đặc trưng. PDF scan vẫn phải xem hình trang và xác lập mốc; không có chữ trích xuất không có nghĩa là không có phạm vi.
+3. **Dò cấu hình in là bằng chứng ban đầu, không phải kết luận duy nhất:** kiểm layout/paper space, viewport (kể cả viewport xoay/cắt biên), plot window nếu in từ model, layer tắt/đóng băng theo viewport và trạng thái in. Phải so hình hiện trên PDF với vùng CAD đã chọn; cấu hình CAD lưu hiện tại có thể khác lần đã xuất PDF. Không dùng tên layer hoặc một khung chữ nhật trang trí làm bằng chứng duy nhất.
+4. **Đếm/đo trong phạm vi đã xác minh:** `dem_doi_tuong` và `hatch_giao_doi_tuong` hiện duyệt model space theo regex layer/block, chưa nhận phạm vi PDF–CAD. Cần cơ chế truyền vùng/viewport đã xác minh và lọc hình học tương ứng, cùng báo cáo phần được lấy, phần bị loại, phần chưa xác định. Quét toàn model có thể dùng để khảo sát tìm ứng viên, nhưng chưa được dùng làm tổng khối lượng thiết kế khi chưa chứng minh toàn model thuộc phạm vi.
+5. **Xử lý mép và trùng lặp theo loại đại lượng:** chiều dài/diện tích cắt theo phạm vi đo phù hợp; đối tượng đếm bị cắt mép phải đối chiếu mã/vị trí để biết một đối tượng nằm qua hai tờ, không áp tỉ lệ diện tích thành số lượng. Các viewport/tờ nối tiếp, vùng chồng lấn hoặc bản vẽ phóng to có thể thể hiện cùng đối tượng: nhận dạng và tính một lần. Hình điển hình/chi tiết cấu tạo dùng làm căn cứ kích thước, không tự cộng vào số lượng lắp đặt. Không chỉ khử trùng theo handle nếu các đối tượng đã được sao chép thành handle khác.
+6. **Giữ dấu vết kiểm tra:** mỗi số tổng hợp truy được về trang PDF, vùng CAD và đối tượng/handle hoặc mã thực thể đã dùng; nêu cả phần nháp/bản cũ ngoài vùng bị loại. Nếu thiếu layout/viewport sau chuyển DWG→DXF, hoặc chưa ánh xạ chắc được PDF với CAD, trả “CHƯA XÁC ĐỊNH PHẠM VI — chưa đủ căn cứ chốt khối lượng”, không tự mở rộng ra toàn model. Tiếp tục kiểm phần đã xác minh và gom các điểm mơ hồ để hỏi một lần.
+
+### Ca nghiệm thu bắt buộc bổ sung
+
+| Ca tự dựng | Tiêu chí đạt |
+|---|---|
+| Trong vùng PDF có 10 đối tượng; ngoài vùng có 7 đối tượng nháp cùng layer/tên block | Tổng thuộc phạm vi = 10; nêu 7 ngoài vùng bị loại, không trả 17 |
+| Hai viewport/tờ cùng thể hiện một đoạn tuyến hoặc đối tượng | Tổng sau đối chiếu không cộng trùng; vẫn truy được cả hai tờ |
+| Có hình điển hình/phóng to và một bản phương án cũ cùng model | Không tính hình chi tiết/phương án cũ thành đối tượng lắp đặt của phương án đang kiểm |
+| Viewport xoay/cắt biên; layer đóng băng theo viewport; polyline/hatch cắt mép | Kết quả phản ánh đúng phần hiện trên PDF và quy tắc đo đã nêu, không chỉ lọc bằng bbox toàn model |
+| DXF thiếu thông tin layout hoặc PDF không khớp phiên bản CAD | Báo phạm vi chưa xác định; không xuất tổng toàn CAD như tổng thiết kế đã kiểm |
+
+**Yêu cầu xử lý:** đưa R11 vào cùng lượt sửa với R6–R9 và sửa quy trình skill theo thứ tự **xác minh bộ PDF → ánh xạ phạm vi CAD → đếm/đo → đối chiếu Excel**. Đây là bổ sung phạm vi nghiệp vụ trực tiếp từ anh Bình, chưa phải tính năng đã được triển khai hay kiểm chứng. Giữ kết luận **CAN_BO_SUNG** cho tới khi có bằng chứng đáp ứng.
