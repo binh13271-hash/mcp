@@ -16,6 +16,7 @@ from collections import Counter
 try:
     import ezdxf
     from ezdxf import path as _path
+    from ezdxf import bbox as _bbox
     HAS_EZDXF = True
 except ImportError:
     HAS_EZDXF = False
@@ -54,6 +55,35 @@ def _regex(mau, ten):
         return re.compile(mau, re.I)
     except re.error as e:
         raise RuntimeError(f"{ten}='{mau}' không phải regex hợp lệ ({e}). Ví dụ: 'LAT|LG' hoặc 'HGA.*'.")
+
+
+def doc_vung(vung):
+    """'xmin,ymin,xmax,ymax' (đơn vị bản vẽ) -> tuple; rỗng -> None. Sai dạng -> RuntimeError nói rõ.
+    Dùng khi một DXF chứa nhiều BẢN SAO mặt bằng (bình đồ, bố trí, lát gạch...) — đếm cả file là nhân 3–5 lần."""
+    if not vung:
+        return None
+    try:
+        so = [float(x) for x in str(vung).replace(";", ",").split(",")]
+    except ValueError:
+        so = []
+    if len(so) != 4 or so[0] >= so[2] or so[1] >= so[3]:
+        raise RuntimeError(f"vung='{vung}' phải là 'xmin,ymin,xmax,ymax' (đơn vị bản vẽ, xmin<xmax, ymin<ymax). "
+                           "Lấy tọa độ khung tờ/bản sao cần đếm từ CAD (lệnh ID hoặc khung in).")
+    return tuple(so)
+
+
+def _trong_vung(e, v):
+    """Tâm hộp bao của đối tượng nằm trong vùng v (None = mọi nơi)."""
+    if v is None:
+        return True
+    try:
+        hop = _bbox.extents([e], fast=True)
+    except Exception:
+        return False
+    if not hop.has_data:
+        return False
+    c = hop.center
+    return v[0] <= c.x <= v[2] and v[1] <= c.y <= v[3]
 
 
 def don_vi(doc, he_so_don_vi=None):
@@ -122,18 +152,37 @@ def _vong_hatch(h):
 def vung_hatch(h):
     """Vùng tô thật theo chẵn-lẻ (vòng lồng = lỗ, đảo trong lỗ = tô lại). Trả (vùng tô, vùng bao gồm lỗ)."""
     _can(shapely_=True)
+    vong = _vong_hatch(h)
+    if not vong:
+        return None, None
+    # Tầng lồng của mỗi vòng = số vòng LỚN hơn chứa quá nửa diện tích nó. Không dùng XOR hình học:
+    # lỗ khoét vẽ LẤN ra ngoài biên ngoài (bồn cây sát bó vỉa) thì XOR tô lại phần lấn ra ngoài.
+    # Đảo trong lỗ (tầng chẵn) vẫn được tô như kiểu hatch Normal của CAD (chạy thật 26/09).
+    tang = []
+    for i, q in enumerate(vong):
+        n = 0
+        for j, r in enumerate(vong):
+            if j != i and r.area > q.area and r.intersects(q) and r.intersection(q).area > 0.5 * q.area:
+                n += 1
+        tang.append(n)
     vung = None
-    for pg in _vong_hatch(h):
-        vung = pg if vung is None else vung.symmetric_difference(pg)
+    for n, q in sorted(zip(tang, vong), key=lambda x: x[0]):
+        if n % 2 == 0:
+            vung = q if vung is None else vung.union(q)
+        elif vung is not None:
+            vung = vung.difference(q)
     if vung is None or vung.is_empty:
         return None, None
-    thanh_phan = getattr(vung, "geoms", [vung])
-    bao = unary_union([Polygon(g.exterior) for g in thanh_phan if g.geom_type == "Polygon"])
+    # Vùng bao = hợp MỌI vòng biên: lỗ chạm biên ngoài (XOR biến thành chỗ lõm) vẫn tính là lỗ — đối tượng
+    # trong đó là DA_KHOET, không phải NGOAI_VUNG (chạy thật 26/09).
+    bao = unary_union(vong)
     return vung, bao
 
 
-def dem_doi_tuong(duong_dan_dxf, loc_layer=None, max_dong=40, he_so_don_vi=None):
-    """Đếm đối tượng model space: block, hình chữ nhật kín, chiều dài, diện tích hatch, nhãn. Trả bảng gọn."""
+def dem_doi_tuong(duong_dan_dxf, loc_layer=None, max_dong=40, he_so_don_vi=None, vung=None):
+    """Đếm đối tượng model space: block, hình chữ nhật kín, chiều dài, diện tích hatch, nhãn. Trả bảng gọn.
+    vung 'xmin,ymin,xmax,ymax' (đơn vị bản vẽ): chỉ đếm đối tượng có tâm hộp bao trong vùng."""
+    khung = doc_vung(vung)
     _can()
     d = _mo_dxf(duong_dan_dxf)
     k, ten_dv, ro = don_vi(d, he_so_don_vi)
@@ -142,6 +191,8 @@ def dem_doi_tuong(duong_dan_dxf, loc_layer=None, max_dong=40, he_so_don_vi=None)
     for e in d.modelspace():
         L = e.dxf.layer
         if loc and not loc.search(L):
+            continue
+        if not _trong_vung(e, khung):
             continue
         t = e.dxftype()
         try:
@@ -161,7 +212,11 @@ def dem_doi_tuong(duong_dan_dxf, loc_layer=None, max_dong=40, he_so_don_vi=None)
                     nhan[re.sub(r"\s+", "", x.replace(",", "."))] += 1
         except Exception as ex:  # không nuốt im lặng: đếm + nêu handle
             loi.append(f"{t} {e.dxf.handle}: {ex}")
-    ra = [f"File {duong_dan_dxf} · đơn vị số đo: {ten_dv}"]
+    ra = [f"File {duong_dan_dxf} · đơn vị số đo: {ten_dv}"
+          + (f" · CHỈ vùng x {khung[0]:g}–{khung[2]:g}, y {khung[1]:g}–{khung[3]:g}" if khung else "")]
+    if not khung:
+        ra.append("Phạm vi: CẢ FILE. Bản vẽ có nhiều bản sao mặt bằng (bình đồ/bố trí/lát/ATGT) thì số đếm bị nhân — "
+                  "truyền vung = khung một bản sao.")
     if not ro:
         ra.append("⚠ Chưa biết đơn vị bản vẽ: số đo là ĐƠN VỊ BẢN VẼ. Truyền he_so_don_vi (0.001 nếu vẽ mm) để ra mét.")
 
@@ -235,39 +290,69 @@ def _hinh_doi_tuong(e):
     return None, False
 
 
-def hatch_giao_doi_tuong(duong_dan_dxf, layer_hatch, loc_doi_tuong, dung_sai=0.02, max_dong=60, he_so_don_vi=None):
+def hatch_giao_doi_tuong(duong_dan_dxf, layer_hatch, loc_doi_tuong, dung_sai=0.02, max_dong=60, he_so_don_vi=None,
+                         mau_hatch=None, kich_thuoc=None, vung=None):
     """Đo từng đối tượng (hố ga, bồn cây...) so với vùng hatch (vùng lát): phần trên vùng tô, phần rơi vào lỗ khoét.
 
     Nhóm: TRONG_VUNG (≥1-dung_sai trên vùng tô: trừ toàn bộ) · DA_KHOET (≥1-dung_sai trong lỗ: hatch đã
     trừ, KHÔNG trừ nữa) · NGOAI_VUNG (≤dung_sai chạm vùng bao) · MOT_PHAN (còn lại: chỉ trừ đúng phần
     trên vùng tô, cột dt_tren_vung_to). Tổng cần trừ = Σ dt_tren_vung_to của mọi đối tượng — không dùng
     đếm × diện tích 1 cái. Đối tượng '~' (ước lượng) chỉ dựng được bao lồi: phải xem bản vẽ.
+    mau_hatch: regex tên mẫu hatch (vd '^ANGLE$') — cùng layer hay có cả hatch vuốt nối/ký hiệu khác.
+    kich_thuoc: 'axb' (m) — chỉ lấy hình chữ nhật kín đúng cỡ (bồn cây 1.40x1.40), bỏ block và nét khác cùng layer.
+    vung: 'xmin,ymin,xmax,ymax' (đơn vị bản vẽ) — chỉ xét đối tượng có tâm hộp bao trong vùng.
+    Nét hở (LINE, polyline mở...) trên layer khớp bị BỎ QUA và đếm riêng, không coi là lỗi.
     """
     # Kiểm đầu vào TRƯỚC khi đòi thư viện: máy thiếu shapely vẫn nhận đúng lỗi tham số (chạy thật 26/09).
     if not (0 < dung_sai < 0.5):
         raise RuntimeError(f"dung_sai={dung_sai} ngoài miền (0; 0,5). Mặc định 0,02 = 2% diện tích đối tượng.")
     re_h, re_o = _regex(layer_hatch, "layer_hatch"), _regex(loc_doi_tuong, "loc_doi_tuong")
+    re_m = _regex(mau_hatch, "mau_hatch") if mau_hatch else None
+    kt = None
+    if kich_thuoc:
+        so = re.findall(r"\d+(?:[.,]\d+)?", str(kich_thuoc))
+        if len(so) != 2:
+            raise RuntimeError(f"kich_thuoc='{kich_thuoc}' phải dạng 'axb' theo mét, vd '1.40x1.40'.")
+        kt = "%.2fx%.2f" % tuple(sorted(float(x.replace(",", ".")) for x in so))
+    khung = doc_vung(vung)
     _can(shapely_=True)
     d = _mo_dxf(duong_dan_dxf)
     k, ten_dv, ro = don_vi(d, he_so_don_vi)
     m = d.modelspace()
-    to, bao = [], []
+    to, bao, mau_bo = [], [], Counter()
     for h in m.query("HATCH"):
         if re_h.search(h.dxf.layer):
-            v, b = vung_hatch(h)
-            if v is not None:
-                to.append(v)
+            if re_m and not re_m.search(h.dxf.pattern_name or ""):
+                mau_bo[h.dxf.pattern_name] += 1
+                continue
+            vv, b = vung_hatch(h)
+            if vv is not None:
+                to.append(vv)
                 bao.append(b)
     if not to:
-        return f"Không thấy HATCH nào có layer khớp '{layer_hatch}'. Dùng cad_dem_doi_tuong xem danh sách layer rồi gọi lại."
+        return (f"Không thấy HATCH nào có layer khớp '{layer_hatch}'"
+                + (f" và mẫu khớp '{mau_hatch}' (mẫu cùng layer: {dict(mau_bo)})" if re_m else "")
+                + ". Dùng cad_dem_doi_tuong xem danh sách layer rồi gọi lại.")
     vung_to = unary_union(to)
     lo = unary_union(bao).difference(vung_to)
     k2 = k * k
     dem, dong, loi = Counter(), [], []
-    tong_tru, tong_uoc = 0.0, 0
+    tong_tru, tong_uoc, net_ho, khac_co = 0.0, 0, 0, 0
     for e in m:
-        ten = e.dxf.name if e.dxftype() == "INSERT" else ""
+        t = e.dxftype()
+        ten = e.dxf.name if t == "INSERT" else ""
         if not (re_o.search(e.dxf.layer) or (ten and re_o.search(ten))):
+            continue
+        if t in _BO_QUA or t == "HATCH":
+            continue
+        if kt is not None:
+            if _chu_nhat(e, k) != kt:
+                khac_co += 1
+                continue
+        elif not (t == "INSERT" or t == "CIRCLE" or (t in ("LWPOLYLINE", "POLYLINE") and e.closed)):
+            net_ho += 1
+            continue
+        if not _trong_vung(e, khung):
             continue
         try:
             hinh, uoc = _hinh_doi_tuong(e)
@@ -294,8 +379,11 @@ def hatch_giao_doi_tuong(duong_dan_dxf, layer_hatch, loc_doi_tuong, dung_sai=0.0
         dong.append(f"{nhom}{'~' if uoc else ''}|{e.dxf.handle}|{ten or e.dxftype()}|{e.dxf.layer}|"
                     f"{c.x * k:.2f}|{c.y * k:.2f}|{A * k2:.3f}|{a_to * k2:.3f}|{a_lo * k2:.3f}")
     tong = sum(dem.values())
-    ra = [f"Đơn vị: {ten_dv}" + ("" if ro else " — ⚠ truyền he_so_don_vi để ra m²"),
-          f"Vùng tô (layer ~ '{layer_hatch}'): {vung_to.area * k2:.2f} · lỗ khoét: {lo.area * k2:.2f} · {len(to)} hatch",
+    ra = [f"Đơn vị: {ten_dv}" + ("" if ro else " — ⚠ truyền he_so_don_vi để ra m²")
+          + (f" · CHỈ đối tượng trong vùng x {khung[0]:g}–{khung[2]:g}, y {khung[1]:g}–{khung[3]:g}" if khung else ""),
+          f"Vùng tô (layer ~ '{layer_hatch}'" + (f", mẫu ~ '{mau_hatch}'" if re_m else "")
+          + f"): {vung_to.area * k2:.2f} · lỗ khoét: {lo.area * k2:.2f} · {len(to)} hatch"
+          + (f" · bỏ {sum(mau_bo.values())} hatch khác mẫu {dict(mau_bo)}" if mau_bo else ""),
           f"Đối tượng khớp '{loc_doi_tuong}': {tong} — TRONG_VUNG {dem['TRONG_VUNG']} · DA_KHOET {dem['DA_KHOET']} · "
           f"MOT_PHAN {dem['MOT_PHAN']} · NGOAI_VUNG {dem['NGOAI_VUNG']}",
           f"TỔNG DIỆN TÍCH CẦN TRỪ khỏi vùng lát = {tong_tru:.3f} (Σ phần nằm trên vùng tô)"
@@ -306,6 +394,9 @@ def hatch_giao_doi_tuong(duong_dan_dxf, layer_hatch, loc_doi_tuong, dung_sai=0.0
     ra += dong[:max_dong]
     if len(dong) > max_dong:
         ra.append(f"Đã trả {max_dong}/{len(dong)} dòng. Tăng max_dong nếu cần danh sách đủ.")
+    if net_ho or khac_co:
+        ra.append(f"Bỏ qua (không phải đối tượng cần đo): {net_ho} nét hở"
+                  + (f" · {khac_co} hình khác cỡ {kt}" if kt else ""))
     if loi:
         ra.append(f"⚠ {len(loi)} đối tượng không đo được (KHÔNG tính vào tổng): " + "; ".join(loi[:5]))
     if tong == 0 and not loi:

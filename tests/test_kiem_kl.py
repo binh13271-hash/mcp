@@ -430,3 +430,97 @@ def test_thieu_shapely_van_bao_dung_loi_tham_so(dxf_mau, monkeypatch, kw, chu):
     tham.update(kw)
     with pytest.raises(RuntimeError, match=chu):
         hatch_giao_doi_tuong(dxf_mau, **tham)
+
+
+# ============================================ CHẠY THẬT 26/09 (máy): DXF đường đô thị 28 MB
+@can_shapely
+def test_chay_that_lo_lan_ra_ngoai_bien_van_la_da_khoet(tmp_path):
+    """Bồn cây sát bó vỉa: lỗ khoét vẽ LẤN ra ngoài biên ngoài hatch. XOR hình học tô lại phần lấn
+    -> bồn đã khoét bị xếp MOT_PHAN. Xếp tầng theo diện tích chứa thì đúng (chạy thật 26/09)."""
+    d = ezdxf.new()
+    d.header["$INSUNITS"] = 6
+    m = d.modelspace()
+    h = m.add_hatch(dxfattribs={"layer": "LAT"})
+    h.paths.add_polyline_path(_hcn(0, 0, 10, 4), is_closed=True, flags=1)
+    h.paths.add_polyline_path(_hcn(2, -0.2, 1.4, 1.4), is_closed=True, flags=16)  # lấn 0,2 m ra ngoài
+    m.add_lwpolyline(_hcn(2, -0.2, 1.4, 1.4), close=True, dxfattribs={"layer": "BON"})
+    p = tmp_path / "lan.dxf"
+    d.saveas(p)
+    txt = hatch_giao_doi_tuong(str(p), "LAT", "BON")
+    assert "DA_KHOET 1" in txt and "TỔNG DIỆN TÍCH CẦN TRỪ khỏi vùng lát = 0.000" in txt
+
+
+@can_shapely
+def test_chay_that_dao_trong_lo_duoc_to_lai(tmp_path):
+    """Hatch kiểu Normal: bồn 1.4 khoét lỗ nhưng lòng 1.2 là ĐẢO -> được tô, diện tích hatch/nhãn có tính.
+    Tool phải báo phần 1,44 m² trên vùng tô (MOT_PHAN), không coi cả bồn là đã khoét."""
+    d = ezdxf.new()
+    d.header["$INSUNITS"] = 6
+    m = d.modelspace()
+    h = m.add_hatch(dxfattribs={"layer": "LAT"})
+    h.paths.add_polyline_path(_hcn(0, 0, 10, 4), is_closed=True, flags=1)
+    h.paths.add_polyline_path(_hcn(2, 1, 1.4, 1.4), is_closed=True, flags=16)
+    h.paths.add_polyline_path(_hcn(2.1, 1.1, 1.2, 1.2), is_closed=True, flags=16)
+    m.add_lwpolyline(_hcn(2, 1, 1.4, 1.4), close=True, dxfattribs={"layer": "BON"})
+    p = tmp_path / "dao.dxf"
+    d.saveas(p)
+    txt = hatch_giao_doi_tuong(str(p), "LAT", "BON")
+    assert "MOT_PHAN 1" in txt and "TỔNG DIỆN TÍCH CẦN TRỪ khỏi vùng lát = 1.440" in txt
+
+
+@pytest.fixture
+def dxf_hai_ban_sao(tmp_path):
+    """Một file 2 bản sao mặt bằng (x 0–50 và 100–150), cùng layer có hatch lát ANGLE + hatch vuốt nối ANSI31."""
+    d = ezdxf.new()
+    d.header["$INSUNITS"] = 6
+    m = d.modelspace()
+    for ox in (0, 100):
+        for x in (2, 6, 10):
+            m.add_lwpolyline(_hcn(ox + x, 1, 1.4, 1.4), close=True, dxfattribs={"layer": "TK"})
+            m.add_lwpolyline(_hcn(ox + x + 0.1, 1.1, 1.2, 1.2), close=True, dxfattribs={"layer": "TK"})
+        m.add_line((ox, 0), (ox + 30, 0), dxfattribs={"layer": "TK"})
+    h = m.add_hatch(dxfattribs={"layer": "TK"})
+    h.set_pattern_fill("ANGLE", scale=1)
+    h.paths.add_polyline_path(_hcn(100, 0, 20, 4), is_closed=True, flags=1)
+    v = m.add_hatch(dxfattribs={"layer": "TK"})
+    v.set_pattern_fill("ANSI31", scale=1)
+    v.paths.add_polyline_path(_hcn(109, 0, 5, 4), is_closed=True, flags=1)  # vuốt nối chồng lên bồn x=10
+    p = tmp_path / "hai.dxf"
+    d.saveas(p)
+    return str(p)
+
+
+def test_chay_that_dem_theo_vung_ban_sao(dxf_hai_ban_sao):
+    ca = dem_doi_tuong(dxf_hai_ban_sao, "TK")
+    assert "R|1.40x1.40|TK|6" in ca and "CẢ FILE" in ca
+    mot = dem_doi_tuong(dxf_hai_ban_sao, "TK", vung="90,-10,160,10")
+    assert "R|1.40x1.40|TK|3" in mot and "CHỈ vùng" in mot and "CẢ FILE" not in mot
+
+
+@pytest.mark.parametrize("vung", ["1,2,3", "5,0,1,10", "a,b,c,d"])
+def test_chay_that_vung_sai_dang(dxf_hai_ban_sao, vung):
+    with pytest.raises(RuntimeError, match="xmin,ymin,xmax,ymax"):
+        dem_doi_tuong(dxf_hai_ban_sao, vung=vung)
+
+
+@can_shapely
+def test_chay_that_loc_mau_kich_thuoc_va_bo_net_ho(dxf_hai_ban_sao):
+    """Thật: cùng layer 'THIET KE' có hatch lát ANGLE + vuốt nối ANSI31, bồn 1.4 + lòng 1.2 + hàng nghìn nét
+    -> không lọc thì hàng nghìn 'lỗi không dựng được hình kín' và bồn trong vuốt nối bị tính vào lát."""
+    tho = hatch_giao_doi_tuong(dxf_hai_ban_sao, "^TK$", "^TK$")
+    assert "đối tượng không đo được" not in tho and "nét hở" in tho
+    loc = hatch_giao_doi_tuong(dxf_hai_ban_sao, "^TK$", "^TK$", mau_hatch="^ANGLE$", kich_thuoc="1.4x1.4",
+                               vung="90,-10,160,10")
+    assert "bỏ 1 hatch khác mẫu" in loc
+    assert "khớp '^TK$': 3 — TRONG_VUNG 3" in loc
+    assert "TỔNG DIỆN TÍCH CẦN TRỪ khỏi vùng lát = 5.880" in loc
+    assert "8 hình khác cỡ 1.40x1.40" in loc  # 6 lòng 1.2 + 2 nét (lọc cỡ chạy trước lọc vùng)
+    khong = hatch_giao_doi_tuong(dxf_hai_ban_sao, "^TK$", "^TK$", mau_hatch="^KHONGCO$")
+    assert "Không thấy HATCH" in khong and "ANGLE" in khong
+
+
+@pytest.mark.parametrize("kw,chu", [({"kich_thuoc": "1.4"}, "axb"), ({"mau_hatch": "("}, "không phải regex"),
+                                    ({"vung": "1,2"}, "xmin")])
+def test_chay_that_kiem_tham_so_moi(dxf_hai_ban_sao, kw, chu):
+    with pytest.raises(RuntimeError, match=chu):
+        hatch_giao_doi_tuong(dxf_hai_ban_sao, "TK", "TK", **kw)

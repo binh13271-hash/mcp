@@ -33,7 +33,7 @@ Trong phạm vi quyền đó: **tự quyết theo bản vẽ**. Chỉ dừng h�
 | 1 | Sao bản sao vào `_sandbox\<ma-du-an>\`, so SHA256 với nguồn | tool chép file + băm | nhật ký nguồn |
 | 2 | **Máy quét công thức trước** | `excel_quet_loi_khoi_luong` | danh sách nghi vấn CAO/TB/THẤP |
 | 3 | Đọc bản vẽ: **dòng bị gắn cờ TRƯỚC**, sau đó đối chiếu các hạng mục chính còn lại (không cờ ≠ đúng) | đọc PDF / ảnh trang | kích thước, số lượng, ghi chú |
-| 4 | Đếm & đo trên CAD | `cad_dem_doi_tuong`, `cad_hatch_giao_doi_tuong` | số lượng theo hình học, danh sách trừ/không trừ |
+| 4 | **Khoanh phạm vi CAD theo bộ PDF trình ký TRƯỚC** (khung tờ/bản sao mặt bằng → `vung`), rồi đếm & đo | `cad_dem_doi_tuong`, `cad_hatch_giao_doi_tuong` | số lượng theo hình học, danh sách trừ/không trừ, phần bị loại ngoài vùng |
 | 5 | Sửa BẢN SAO: tô vàng ô sửa, cột Ghi chú = lý do + căn cứ (tờ/trang) + giá trị cũ; nhật ký `SUA_KL_<ngày>.txt`; tính lại, soát THKL = KLCT, 0 ô #REF! | tool ghi COM (`excel_ghi_nhieu_o`) | bản sao đã sửa |
 | 6 | Báo cáo 1 trang: bảng số chính cũ→mới, còn treo, việc sếp làm | — | báo cáo |
 
@@ -51,10 +51,11 @@ bộ thì vẫn đối chiếu hết các hạng mục chính. Luôn đọc dòn
 | 4 | **Nhãn loại đối tượng sai** | "hố 1.2x2.6" thực tế là 1.2x1.6 (bản vẽ điển hình) → kéo sai đục hố, BT, ván khuôn | đọc bản vẽ điển hình từng loại hố; sửa CẢ chuỗi dòng dùng kích thước đó |
 | 5 | **Sót đối tượng ngoài tuyến chính** | 6 hố đường nhánh không vào bảng | `cad_dem_doi_tuong` so số lượng với bảng; lập danh mục theo MÃ (HG90–95) |
 | 6 | **Trừ lặp với hatch** | vùng lát đã khoét bồn cây, bảng trừ thêm đủ số bồn | `cad_hatch_giao_doi_tuong`: lấy **TỔNG DIỆN TÍCH CẦN TRỪ** (Σ phần nằm trên vùng tô, đúng cả ca MOT_PHAN) — không lấy số cái × diện tích 1 cái |
-| 7 | **Trừ đối tượng nằm ngoài vùng lát** | trừ 84 hố ga nhưng chỉ 31 hố nằm trong vùng lát | như #6 |
+| 7 | **Trừ đối tượng nằm ngoài vùng lát** | trừ 84 hố ga nhưng chỉ khoảng một nửa nằm trên vùng lát (bảng đếm TAY 25/09 sót cả dãy hố phía đối diện — tool bắt được khi chạy thật 26/09) | như #6; đếm bằng tool, không đếm tay |
 | 8 | **Gõ nhầm số trong bảng thống kê** | Slg7 = 689, nhãn bản vẽ = 698 | so từng nhãn Slg với diện tích hatch cùng vùng; lệch vượt độ chính xác của nguồn (nhãn làm tròn m² → quá ±0,5 m²) thì xem |
 | 9 | **Số nhập tay không nguồn / liên kết file ngoài / #REF!** | `=180.434+23.56`, `'[file cũ.xls]'!K67` | quét HANG_SO, THAM_CHIEU; THKL #REF! thì lập lại THKL theo KLCT |
 | 10 | **Sheet rác / nghi virus macro** | sheet `xxxxxxxx`, `HelpMe`, sheet chép từ dự án khác (tên đường khác) | SHEET_LA chỉ là NGHI VẤN theo tên: mở file khi TẮT macro, **quét bằng phần mềm diệt virus**; xóa ở bản sao sau khi xác nhận, ghi vào nhật ký |
+| 11 | **Đảo trong lỗ khoét** | hatch kiểu Normal: bồn 1.4 khoét lỗ nhưng lòng 1.2 là vòng thứ 3 → được TÔ, nhãn diện tích tính cả lòng bồn | `cad_hatch_giao_doi_tuong` xếp MOT_PHAN, cột `dt_tren_vung_to` = 1,44 m²/bồn → phải trừ nốt phần đó |
 
 Hai nghi vấn đợt 25/09 bị **bản vẽ bác bỏ** (đai Ø6 đúng nhưng nhãn ghi Þ8; suất bó vỉa đúng BV
 dù khác sheet BOVIA cũ): **nghi vấn từ công thức chưa phải lỗi** — không sửa khi chưa có căn cứ.
@@ -89,9 +90,23 @@ token thì bên kia đọc file làm tiếp.
 - Font VNI: xét từng từ; từ mơ hồ (vd 'hoá') không có bằng chứng thì giữ nguyên.
 - CAD: số đo theo $INSUNITS; bản vẽ không khai đơn vị thì phải truyền he_so_don_vi. Đối tượng
   đánh dấu '~' chỉ ước lượng bằng bao lồi — xem bản vẽ.
+- **Một DXF hay chứa 3–5 bản sao mặt bằng** (bình đồ, bố trí, thoát nước, lát, ATGT) và phần nháp: đếm cả file là
+  nhân số. Luôn truyền `vung='xmin,ymin,xmax,ymax'` = khung bản sao/tờ đã khớp PDF; kết quả không vùng ghi
+  'Phạm vi: CẢ FILE' — chỉ để khảo sát, không dùng làm tổng. Viewport xoay / layer đóng băng theo viewport: tool CHƯA
+  xử lý (Codex R11) → xác minh bằng mắt trên PDF; không khớp được thì ghi 'CHƯA XÁC ĐỊNH PHẠM VI'.
+- Cùng layer thường có nhiều loại hatch (lát ANGLE + vuốt nối ANSI31) → truyền `mau_hatch`. Layer lẫn bồn 1.4, lòng 1.2
+  và hàng nghìn nét → truyền `kich_thuoc='1.40x1.40'`.
 
 ## 6. Ca kiểm chứng (hồi quy) cho tool
 
 Bản sao đợt 25/09 trong `_sandbox\kiem-kl-ntt\`: `excel_quet_loi_khoi_luong` trên file GỐC phải
 gắn cờ CAO đủ: J76, J77, J80, J81, J82 (hệ số), J84 (dấu), E70, E83 (nhãn), J251, J252 (cừ tràm).
-Thiếu ô nào là tool thụt lùi.
+Thiếu ô nào là tool thụt lùi. Bản đã sửa `_DA-SUA_<ngày>` phải còn 0 cờ CAO.
+
+Ca CAD kèm tọa độ khung từng bản sao mặt bằng: `references/du-an/<ma-du-an>.md` — **chỉ ở máy / repo riêng tư, không
+đưa vào repo phối hợp công khai** (§3).
+
+## Sổ rút kinh nghiệm
+
+**Đọc `progress/so-rut-kinh-nghiem.md` trước khi bắt tay vào việc** — lỗi vai này từng mắc. Làm hụt hoặc người
+dùng phải sửa lại thì ghi thêm một mục theo mẫu trong đó.

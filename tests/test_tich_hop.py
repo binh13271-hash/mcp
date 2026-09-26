@@ -22,8 +22,15 @@ def _moi_truong():
         wb.close = lambda: (DA_DONG.append(kw.get("data_only", False)), goc())
         return wb
 
+    def o_co_that(ws, d1=1, d2=None):
+        # Giả lập _o_co_that() của server (generator ô thật theo dòng, cột) — bản ghép v7.3 dùng lại nó (G6).
+        o = ws._cells
+        for k in sorted(k for k in o if k[0] >= d1 and (d2 is None or k[0] <= d2)):
+            yield o[k]
+
+    import os
     g = {"_DECO_DOC": deco, "secure_path": lambda p: p, "ensure_file_hydrated": DA_HYDRATE.append,
-         "_nap_workbook": nap, "__name__": "server_gia"}
+         "_nap_workbook": nap, "_o_co_that": o_co_that, "json": json, "os": os, "__name__": "server_gia"}
     code = pathlib.Path(__file__).resolve().parents[1].joinpath("tich_hop", "them_vao_server.py").read_text(encoding="utf-8")
     exec(compile(code, "them_vao_server.py", "exec"), g)
     return g

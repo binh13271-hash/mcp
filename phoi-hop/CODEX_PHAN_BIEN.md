@@ -222,3 +222,30 @@ pytest sau vá: **có shapely 73/73 · không shapely 67 qua + 6 bỏ qua, 0 đ�
 **Đã ghép phiên bản nào:** không có. Kết luận Codex **CAN_BO_SUNG vẫn giữ**; R11 (phạm vi PDF→CAD) chưa triển khai.
 
 **Việc còn lại — phải làm ở phiên Claude Code chạy trên máy anh Bình:** toàn bộ Bước 1–5 lệnh giao 26/09 (chép + băm file, chạy thật 2a–2c, ghép 3 tool + soat_server + test_mcp + đo docstring, đóng gói skill, cập nhật 2 file dựng máy thêm ezdxf/shapely tùy chọn/kiem_kl/3 tool/skill/ODA). Kéo nhánh này về trước để có bản vá shapely.
+
+## KẾT QUẢ CHẠY THẬT + GHÉP — Claude Code trên MÁY Windows của anh Bình — 2026-09-26
+
+Không chứa số liệu hồ sơ (repo công khai). Chạy trên bản sao trong `_sandbox`, CHỈ ĐỌC; file thật không đụng.
+
+| Bước | Kết quả |
+|---|---|
+| 1. Chuẩn bị | Bản sao XLS (gốc + bản đã sửa) khớp SHA-256 nguồn; nhánh này checkout vào bản clone; ezdxf 1.4.4 + shapely 2.1.2 có sẵn; `pytest tests` **73/73** trước vá |
+| 2a. `quet_loi_sheet` KLCT bản GỐC | Bắt **10/10** ô CAO phải bắt; **0** cờ CAO báo nhầm. TB 11: 2 trúng lỗi thật, 1 đúng dấu hiệu (liên kết file ngoài), **8 báo nhầm** (5 `SO_LUONG_LECH` khối nắp hố ga: số nắp là bội số hố; 3 `CONG_THUC_LECH` dòng gốc cộng trong khối dòng trừ). THẤP 32 = số gõ tay (lưu ý, không phải lỗi) |
+| 2b. Bản đã sửa | **0** cờ CAO — các lỗi đã hết |
+| 2c. CAD | `$INSUNITS`=6 (m). Đếm theo vùng bản sao: khớp **100%** bảng đếm tay; KHÔNG vùng thì gấp ~2,9 lần (file có 5 bản sao mặt bằng). `hatch_giao` qua kiểm độc lập (điểm-trong-vòng) **đúng**; lệch bảng đo tay cũ vì bảng tay sót một dãy hố và bỏ qua đảo trong lỗ khoét (nghi vấn số liệu đã báo anh Bình, không ghi đây) |
+| Thời gian | `excel_quet_loi_khoi_luong` qua server: lần đầu ~35 s (Excel chuyển .xls), lần sau < 1 s. CAD: 5–12 s/lượt, DXF ~28 MB |
+
+**Lỗi tool chỉ lộ khi chạy thật — đã vá trong nhánh này (+10 test, 9/10 fail trên `cad.py` cũ):**
+
+| Lỗi | Vá |
+|---|---|
+| DXF chứa nhiều bản sao mặt bằng → đếm nhân số | `vung='xmin,ymin,xmax,ymax'` cho cả 2 hàm; không vùng thì in "Phạm vi: CẢ FILE" (một phần R11 — mới lọc khung chữ nhật, CHƯA viewport/layout) |
+| Cùng layer có hatch lát + hatch vuốt nối | `mau_hatch` (regex tên mẫu) |
+| Layer lẫn bồn, lòng bồn, hàng nghìn nét → hàng nghìn "lỗi không dựng được hình kín" | `kich_thuoc='axb'`; nét hở bỏ qua và đếm riêng, không coi là lỗi |
+| Lỗ khoét chạm/lấn biên ngoài: XOR biến lỗ thành chỗ lõm (không tính là lỗ) và tô lại phần lấn | Vùng tô theo tầng lồng (vòng lớn chứa > ½ diện tích); vùng bao = hợp mọi vòng. Đảo trong lỗ vẫn được tô như hatch Normal của CAD |
+
+Phía server (không nằm trong repo này): `.xls` đời cũ nhiều tên định nghĩa rác làm Excel ẩn từ chối lưu `.xlsx` → vá hàm chuyển của server.
+
+**Đã ghép:** my-office-mcp **v7.3** — 3 tool CHỈ ĐỌC (`_DECO_DOC`), `_o_co_that` của server nối vào `kiem_kl` (G6), `tich_hop/them_vao_server.py` nay là bản chép đúng khối đã ghép (test giả lập thêm `_o_co_that`/`json`/`os`). soat_server sạch từ CAO; test_mcp **454/454** (không thụt lùi); mô tả tool 49.508/50.000; skill `kiem-tra-khoi-luong` đóng gói (cửa kiểm không thụt lùi); hồ sơ dựng lại máy thêm ezdxf/shapely (tùy chọn), `kiem_kl\`, ODA File Converter (tùy chọn). pytest nhánh này: **83/83**.
+
+**Còn cho Codex vòng `kiem`:** (1) soát 4 bản vá CAD trên; (2) R11 còn thiếu viewport/layout + khử trùng giữa tờ; (3) adapter bộ dò tiêu đề server (R10) chưa làm; (4) hạ cờ TB báo nhầm (bội số, dòng gốc cộng). Kết luận **CAN_BO_SUNG** giữ cho R11.
