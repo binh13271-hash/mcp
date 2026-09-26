@@ -243,12 +243,13 @@ def hatch_giao_doi_tuong(duong_dan_dxf, layer_hatch, loc_doi_tuong, dung_sai=0.0
     trên vùng tô, cột dt_tren_vung_to). Tổng cần trừ = Σ dt_tren_vung_to của mọi đối tượng — không dùng
     đếm × diện tích 1 cái. Đối tượng '~' (ước lượng) chỉ dựng được bao lồi: phải xem bản vẽ.
     """
-    _can(shapely_=True)
+    # Kiểm đầu vào TRƯỚC khi đòi thư viện: máy thiếu shapely vẫn nhận đúng lỗi tham số (chạy thật 26/09).
     if not (0 < dung_sai < 0.5):
         raise RuntimeError(f"dung_sai={dung_sai} ngoài miền (0; 0,5). Mặc định 0,02 = 2% diện tích đối tượng.")
+    re_h, re_o = _regex(layer_hatch, "layer_hatch"), _regex(loc_doi_tuong, "loc_doi_tuong")
+    _can(shapely_=True)
     d = _mo_dxf(duong_dan_dxf)
     k, ten_dv, ro = don_vi(d, he_so_don_vi)
-    re_h, re_o = _regex(layer_hatch, "layer_hatch"), _regex(loc_doi_tuong, "loc_doi_tuong")
     m = d.modelspace()
     to, bao = [], []
     for h in m.query("HATCH"):

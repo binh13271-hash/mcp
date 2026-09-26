@@ -14,6 +14,10 @@ from kiem_kl.cad import dem_doi_tuong, hatch_giao_doi_tuong
 from kiem_kl.quet_loi import CHUA, _BoTinh, _mau_cong_thuc, dinh_dang_ket_qua, quet_loi_sheet, quet_sheet_la
 from kiem_kl.vni import bo_dau, giai_ma_vni, trong_nhu_vni
 
+# shapely là TÙY CHỌN: máy không cài thì các ca đo diện tích hatch/khối hình được BỎ QUA có lý do,
+# không báo đỏ giả. Hành vi khi thiếu shapely vẫn được khoá ở test_codex_r8_thieu_shapely_* .
+can_shapely = pytest.mark.skipif(not cad.HAS_SHAPELY, reason="cần shapely (tùy chọn): pip install shapely")
+
 
 # ================================================================ VNI
 @pytest.mark.parametrize("vni,unicode_", [
@@ -309,6 +313,7 @@ def dxf_mau(tmp_path):
     return str(p)
 
 
+@can_shapely
 def test_dem_doi_tuong(dxf_mau):
     txt = dem_doi_tuong(dxf_mau)
     assert "I|HOGA|HG|2" in txt
@@ -318,6 +323,7 @@ def test_dem_doi_tuong(dxf_mau):
     assert "T|HG12|1" in txt
 
 
+@can_shapely
 def test_hatch_giao_doi_tuong(dxf_mau):
     bon = hatch_giao_doi_tuong(dxf_mau, "LAT", "BONCAY")
     assert "TRONG_VUNG 1 · DA_KHOET 1 · MOT_PHAN 0 · NGOAI_VUNG 1" in bon
@@ -328,10 +334,12 @@ def test_hatch_giao_doi_tuong(dxf_mau):
     assert "TỔNG DIỆN TÍCH CẦN TRỪ khỏi vùng lát = 2.400" in hg
 
 
+@can_shapely
 def test_hatch_khong_thay_layer(dxf_mau):
     assert "Không thấy HATCH" in hatch_giao_doi_tuong(dxf_mau, "KHONGCO", "BONCAY")
 
 
+@can_shapely
 def test_codex_r6_don_vi_mm(tmp_path):
     d = ezdxf.new()
     d.header["$INSUNITS"] = 4
@@ -354,6 +362,7 @@ def test_codex_r6_don_vi_chua_ro(tmp_path):
     assert "L|0|5000.00" in dem_doi_tuong(str(p), he_so_don_vi=1000)
 
 
+@can_shapely
 def test_codex_r7_lo_khoet_mot_phan_va_dao_nho(tmp_path):
     d = ezdxf.new()
     d.header["$INSUNITS"] = 6
@@ -372,6 +381,7 @@ def test_codex_r7_lo_khoet_mot_phan_va_dao_nho(tmp_path):
     assert "TỔNG DIỆN TÍCH CẦN TRỪ khỏi vùng lát = 0.400" in txt
 
 
+@can_shapely
 def test_codex_r8_block_xoay_do_hinh_that(tmp_path):
     d = ezdxf.new()
     d.header["$INSUNITS"] = 6
@@ -404,6 +414,18 @@ def test_codex_r8_thieu_shapely_khong_xap_xi(dxf_mau, monkeypatch):
 
 @pytest.mark.parametrize("kw,chu", [({"dung_sai": 0}, "ngoài miền"), ({"layer_hatch": "("}, "không phải regex")])
 def test_codex_r10_kiem_dau_vao(dxf_mau, kw, chu):
+    tham = dict(layer_hatch="LAT", loc_doi_tuong="BONCAY")
+    tham.update(kw)
+    with pytest.raises(RuntimeError, match=chu):
+        hatch_giao_doi_tuong(dxf_mau, **tham)
+
+
+@pytest.mark.parametrize("kw,chu", [({"dung_sai": 0}, "ngoài miền"), ({"layer_hatch": "("}, "không phải regex"),
+                                    ({}, "Thiếu thư viện shapely")])
+def test_thieu_shapely_van_bao_dung_loi_tham_so(dxf_mau, monkeypatch, kw, chu):
+    """Chạy thật 26/09: máy không có shapely thì mọi lời gọi sai tham số đều chỉ ra 'Thiếu thư viện',
+    người dùng cài xong mới biết tham số sai. Nay kiểm tham số trước, thiếu thư viện báo sau."""
+    monkeypatch.setattr(cad, "HAS_SHAPELY", False)
     tham = dict(layer_hatch="LAT", loc_doi_tuong="BONCAY")
     tham.update(kw)
     with pytest.raises(RuntimeError, match=chu):

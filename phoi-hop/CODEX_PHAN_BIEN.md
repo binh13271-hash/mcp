@@ -195,3 +195,30 @@ Anh Bình bổ sung: bản CAD thực tế thường có rất nhiều phần nh
 | DXF thiếu thông tin layout hoặc PDF không khớp phiên bản CAD | Báo phạm vi chưa xác định; không xuất tổng toàn CAD như tổng thiết kế đã kiểm |
 
 **Yêu cầu xử lý:** đưa R11 vào cùng lượt sửa với R6–R9 và sửa quy trình skill theo thứ tự **xác minh bộ PDF → ánh xạ phạm vi CAD → đếm/đo → đối chiếu Excel**. Đây là bổ sung phạm vi nghiệp vụ trực tiếp từ anh Bình, chưa phải tính năng đã được triển khai hay kiểm chứng. Giữ kết luận **CAN_BO_SUNG** cho tới khi có bằng chứng đáp ứng.
+
+## KẾT QUẢ CHẠY THẬT + GHÉP — Claude (Chuyên viên MCP) — 2026-09-26
+
+Phiên này chạy trên **máy đám mây Linux**, KHÔNG phải máy Windows của anh Bình: không có ổ `D:\OneDrive`, `_sandbox`, Excel/COM, `server.py` của my-office-mcp, file hồ sơ `.xls` hay DXF. Theo lệnh giao "bước nào bị chặn thì dừng, ghi rõ, không lách": **không dựng hồ sơ giả để thay chạy thật**.
+
+| Bước | Kết quả |
+|---|---|
+| 1. Chuẩn bị — chép file, so mã băm | **CHẶN** — không có ổ D:/OneDrive trên máy phiên này |
+| 1. pytest bản clone (7b4e835 + 930b3ab) | Có shapely: **70/70**. **Không có shapely: 61/70 — 9 đỏ giả** (xem lỗi tool) |
+| 2a/2b. `quet_loi_sheet` KLCT gốc / _DA-SUA | **CHƯA CHẠY** — bắt ?/10, số báo nhầm: chưa có. Cần Excel DispatchEx + file thật |
+| 2c. `dem_doi_tuong` + `hatch_giao_doi_tuong` DXF thật | **CHƯA CHẠY** — % khớp CAD, `$INSUNITS`, thời gian: chưa có |
+| 3. Ghép vào server.py | **KHÔNG LÀM** — điều kiện "bước 2 đạt" chưa thoả, và không có server.py |
+| 4. Đóng gói skill | **KHÔNG LÀM** — cần `scripts\dong_goi_skill.py` + zip cũ để chạy cửa kiểm không thụt lùi |
+| 5. Hồ sơ dựng lại máy (H0) | **KHÔNG LÀM** — hai file nằm trên máy, không có trong repo |
+
+**Lỗi tool phát hiện và đã vá trong bản clone:**
+
+| Lỗi | Triệu chứng | Vá |
+|---|---|---|
+| Test phụ thuộc cứng shapely (thư viện TÙY CHỌN) | Máy không cài shapely → 9 test đỏ, trông như tool hỏng; cửa "phải 70/70" trượt oan | 6 ca đo hatch/khối hình gắn `@can_shapely` (tự bỏ qua, ghi lý do). Hành vi thiếu shapely vẫn khoá bằng test riêng |
+| `hatch_giao_doi_tuong` đòi thư viện trước khi kiểm tham số | Không shapely + `dung_sai` sai hoặc regex hỏng → chỉ báo "Thiếu thư viện", cài xong mới lộ lỗi tham số | Kiểm `dung_sai` + 2 regex trước `_can(shapely_=True)`. Test mới `test_thieu_shapely_van_bao_dung_loi_tham_so` (3 ca): **2/3 trượt trên bản cũ**, qua trên bản mới |
+
+pytest sau vá: **có shapely 73/73 · không shapely 67 qua + 6 bỏ qua, 0 đỏ**.
+
+**Đã ghép phiên bản nào:** không có. Kết luận Codex **CAN_BO_SUNG vẫn giữ**; R11 (phạm vi PDF→CAD) chưa triển khai.
+
+**Việc còn lại — phải làm ở phiên Claude Code chạy trên máy anh Bình:** toàn bộ Bước 1–5 lệnh giao 26/09 (chép + băm file, chạy thật 2a–2c, ghép 3 tool + soat_server + test_mcp + đo docstring, đóng gói skill, cập nhật 2 file dựng máy thêm ezdxf/shapely tùy chọn/kiem_kl/3 tool/skill/ODA). Kéo nhánh này về trước để có bản vá shapely.
